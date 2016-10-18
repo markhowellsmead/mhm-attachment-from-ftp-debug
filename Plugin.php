@@ -6,7 +6,7 @@ Plugin URI: #
 Text Domain: mhm-attachment-from-ftp-debug
 Author: Mark Howells-Mead
 Author URI: https://permanenttourist.ch/
-Version: 0.1
+Version: 0.3.0
 */
 
 namespace MHM\WordPress\AttachmentFromFtpDebug;
@@ -14,10 +14,18 @@ namespace MHM\WordPress\AttachmentFromFtpDebug;
 class Plugin
 {
     public $wpversion = '4.5';
+    private $notify_regular = false;
+    private $notify_success = false;
+    private $notify_error = true;
 
     public function __construct()
     {
         $this->email = esc_attr(get_option('admin_email'));
+        $plugin_options = get_option('mhm_attachment_from_ftp');
+
+        $this->notify_error = (bool) apply_filters('mhm-attachment-from-ftp-debug/notify_error', (bool) $plugin_options['notify_error']);
+        $this->notify_regular = (bool) apply_filters('mhm-attachment-from-ftp-debug/notify_regular', (bool) $plugin_options['notify_regular']);
+        $this->notify_success = (bool) apply_filters('mhm-attachment-from-ftp-debug/notify_success', (bool) $plugin_options['notify_success']);
 
         add_action('mhm-attachment-from-ftp/no_files', array($this, 'noFiles'), 10, 1);
         add_action('mhm-attachment-from-ftp/no_file_date', array($this, 'noFileDate'), 10, 2);
@@ -34,14 +42,6 @@ class Plugin
         add_action('mhm-attachment-from-ftp/attachment_updated', array($this, 'attachmentUpdated'), 10, 1);
         add_action('mhm-attachment-from-ftp/attachment_created', array($this, 'attachmentCreated'), 10, 1);
         add_action('mhm-attachment-from-ftp/updated_attachment_metadata', array($this, 'updatedAttachmentMetadata'), 10, 2);
-    }
-
-    private function debug($message, $method = __METHOD__)
-    {
-        if (gettype($message) !== 'string') {
-            $message = print_r($message, 1);
-        }
-        error_log($message);
     }
 
     public function activation()
@@ -98,77 +98,107 @@ class Plugin
 
     public function noFiles($folder)
     {
-        wp_mail($this->email, __METHOD__, 'There are no files in the folder '.$folder);
+        if ($this->notify_regular) {
+            wp_mail($this->email, __METHOD__, 'There are no files in the folder '.$folder);
+        }
     }
 
     public function noFileDate($file, $exif)
     {
-        wp_mail($this->email, __METHOD__, 'The file '.$file.' has no creation date in its EXIF.'.chr(10).chr(10).print_r($exif, 1));
+        if ($this->notify_error) {
+            wp_mail($this->email, __METHOD__, 'The file '.$file.' has no creation date in its EXIF.'.chr(10).chr(10).print_r($exif, 1));
+        }
     }
 
     public function noValidEntries($folder, $files)
     {
-        wp_mail($this->email, __METHOD__, 'There are no valid files in the folder '.$folder.'.'.chr(10).chr(10).print_r($files, 1));
+        if ($this->notify_regular) {
+            wp_mail($this->email, __METHOD__, 'There are no valid files in the folder '.$folder.'.'.chr(10).chr(10).print_r($files, 1));
+        }
     }
 
     public function finished($files, $processed)
     {
-        wp_mail($this->email, __METHOD__, 'The process was completed.'.chr(10).chr(10).'Files:'.chr(10).print_r($files, 1).chr(10).chr(10).'Processed:'.chr(10).print_r($processed, 1));
+        if ($this->notify_regular) {
+            wp_mail($this->email, __METHOD__, 'The process was completed.'.chr(10).chr(10).'Files:'.chr(10).print_r($files, 1).chr(10).chr(10).'Processed:'.chr(10).print_r($processed, 1));
+        }
     }
 
     public function sourceFolderUnavailable($folder)
     {
-        wp_mail($this->email, __METHOD__, 'The source folder '.$folder.' is not available.');
+        if ($this->notify_error) {
+            wp_mail($this->email, __METHOD__, 'The source folder '.$folder.' is not available.');
+        }
     }
 
     public function sourceFolderUndefined($folder)
     {
-        wp_mail($this->email, __METHOD__, 'The source folder is not defined.');
+        if ($this->notify_error) {
+            wp_mail($this->email, __METHOD__, 'The source folder is not defined.');
+        }
     }
 
     public function postAuthorUndefined()
     {
-        wp_mail($this->email, __METHOD__, 'The post author is not defined.');
+        if ($this->notify_error) {
+            wp_mail($this->email, __METHOD__, 'The post author is not defined.');
+        }
     }
 
     public function filetypeNotAllowed($file, $mime, $allowed)
     {
-        wp_mail($this->email, __METHOD__, 'The file “'.$file.'” is of the MIME type “'.$mime.'” which is not supported. Allowed file types are:'.chr(10).chr(10).print_r($allowed, 1));
+        if ($this->notify_error) {
+            wp_mail($this->email, __METHOD__, 'The file “'.$file.'” is of the MIME type “'.$mime.'” which is not supported. Allowed file types are:'.chr(10).chr(10).print_r($allowed, 1));
+        }
     }
 
     public function targetFolderMissing($folder)
     {
-        wp_mail($this->email, __METHOD__, 'The target folder '.$folder.' is missing and could not be created.');
+        if ($this->notify_error) {
+            wp_mail($this->email, __METHOD__, 'The target folder '.$folder.' is missing and could not be created.');
+        }
     }
 
     public function fileMoved($from, $to)
     {
-        wp_mail($this->email, __METHOD__, 'The file '.$from.' was successfully moved to '.$to.'.');
+        if ($this->notify_regular) {
+            wp_mail($this->email, __METHOD__, 'The file '.$from.' was successfully moved to '.$to.'.');
+        }
     }
 
     public function fileNotMoved($from, $to)
     {
-        wp_mail($this->email, __METHOD__, 'The file '.$from.' could not successfully be moved to '.$to.'.');
+        if ($this->notify_error) {
+            wp_mail($this->email, __METHOD__, 'The file '.$from.' could not successfully be moved to '.$to.'.');
+        }
     }
 
     public function titleDescriptionOverwritten($id, $data)
     {
-        wp_mail($this->email, __METHOD__, 'Attachment ID '.$id.' was rewritten with a new title and/or description. The new values are:'.chr(10).chr(10).print_r($data, 1));
+        if ($this->notify_regular) {
+            wp_mail($this->email, __METHOD__, 'Attachment ID '.$id.' was rewritten with a new title and/or description. The new values are:'.chr(10).chr(10).print_r($data, 1));
+        }
     }
 
     public function attachmentCreated($id)
     {
-        wp_mail($this->email, __METHOD__, 'Attachment created. The new ID is '.$id.'.');
+        if ($this->notify_regular) {
+            wp_mail($this->email, __METHOD__, 'Attachment created. The new ID is '.$id.'.');
+        }
     }
 
     public function attachmentUpdated($id)
     {
-        wp_mail($this->email, __METHOD__, 'Attachment ID '.$id.' was updated.');
+        if ($this->notify_success) {
+            wp_mail($this->email, __METHOD__, 'Attachment ID '.$id.' was updated.');
+        }
     }
 
     public function updatedAttachmentMetadata($id, $file)
     {
-        wp_mail($this->email, __METHOD__, 'The metadata for Attachment ID '.$id.' (file '.$file.') was rewritten to the database.');
+        if ($this->notify_success) {
+            wp_mail($this->email, __METHOD__, 'The metadata for Attachment ID '.$id.' (file '.$file.') was rewritten to the database.');
+        }
     }
 }
 
